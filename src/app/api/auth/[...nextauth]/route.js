@@ -22,10 +22,9 @@ export const authOptions = {
         try {
           await connectDB();
           await seedAdmin();
-          await seedVideurs(); // <-- AJOUTE CETTE LIGNE ICI
+          await seedVideurs(); // <-- Graine initiale automatique
           
-          const { type, email, password, identifiant, idChauffeur, codePin } =
-            credentials;
+          const { type, email, password, identifiant, idChauffeur, codePin } = credentials;
 
           // ── CAS 1 : Utilisateur normal ──
           if (type === "user") {
@@ -101,20 +100,20 @@ export const authOptions = {
     },
 
     async session({ session, token }) {
-      session.user.id = token.id;
-      session.user.nom = token.nom;
-      session.user.role = token.role;
-      session.user.identifiant = token.identifiant;
-      session.user.idChauffeur = token.idChauffeur;
-      session.user.zone = token.zone;
-      session.user.quartier = token.quartier;
+      if (session.user) {
+        session.user.id = token.id;
+        session.user.nom = token.nom;
+        session.user.role = token.role;
+        session.user.identifiant = token.identifiant;
+        session.user.idChauffeur = token.idChauffeur;
+        session.user.zone = token.zone;
+        session.user.quartier = token.quartier;
+      }
       return session;
     },
 
-    // Ce callback intercepte toutes les redirections de NextAuth
-    // et les remplace par nos propres URLs selon le rôle
     async redirect({ url, baseUrl }) {
-      return baseUrl; // on laisse chaque page gérer sa propre redirection
+      return baseUrl;
     },
   },
 
@@ -123,10 +122,7 @@ export const authOptions = {
     maxAge: 24 * 60 * 60,
   },
 
-  // On supprime pages.signIn pour ne pas interférer
-  // La redirection est gérée dans chaque page via window.location.href
   pages: {},
-
   secret: process.env.NEXTAUTH_SECRET,
 };
 

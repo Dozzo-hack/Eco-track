@@ -2,27 +2,30 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useSession, signOut } from "next-auth/react"; // 1. Importation des outils d'auth
 import { 
   LayoutDashboard, 
   Users, 
   Truck, 
   CalendarDays, 
   CreditCard, 
-  Settings,
   LogOut,
   ShieldAlert,
-  HelpCircle // Ajout de l'icône pour le Quizz
+  Home,
+  HelpCircle
 } from 'lucide-react';
 
 export default function AdminLayout({ children }) {
   const pathname = usePathname();
+  const { data: session } = useSession(); // 2. Récupération de la session
 
   const menuItems = [
     { name: 'Vue d’ensemble', path: '/admin', icon: LayoutDashboard },
     { name: 'Utilisateurs', path: '/admin/users', icon: Users },
     { name: 'Flotte & Videurs', path: '/admin/fleet', icon: Truck },
     { name: 'Planning Vidange', path: '/admin/schedule', icon: CalendarDays },
-    { name: 'Quizz', path: '/admin/quizz', icon: HelpCircle }, // Icône réparée ici
+    { name: 'Quizz', path: '/admin/quizz', icon: HelpCircle },
+    { name: 'Quartiers', path: '/admin/quartiers', icon: Home },
     { name: 'Paiements & Tarifs', path: '/admin/finance', icon: CreditCard },
   ];
 
@@ -59,18 +62,29 @@ export default function AdminLayout({ children }) {
           </nav>
         </div>
 
-        {/* PROFIL ADMIN EN BAS */}
+        {/* PROFIL ADMIN DYNAMIQUE */}
         <div className="mt-auto p-6 border-t border-zinc-900">
           <div className="flex items-center gap-3 mb-6 p-2">
             <div className="w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-green-500">
-              AD
+              {/* Initiale du nom dynamique */}
+              {session?.user?.nom ? session.user.nom.charAt(0).toUpperCase() : "A"}
             </div>
             <div>
-              <p className="text-xs font-black uppercase">Super Admin</p>
-              <p className="text-[10px] text-zinc-500 font-mono">ID: #0001</p>
+              <p className="text-xs font-black uppercase">
+                {session?.user?.nom || "Chargement..."}
+              </p>
+              <p className="text-[10px] text-zinc-500 font-mono">
+                {/* ID dynamique (on prend les 4 derniers caractères) */}
+                ID: #{session?.user?.id ? session.user.id.slice(-4) : "0000"}
+              </p>
             </div>
           </div>
-          <button className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all font-bold text-xs">
+          
+          {/* Bouton Quitter fonctionnel */}
+          <button 
+            onClick={() => signOut({ callbackUrl: "/auth/admin" })}
+            className="w-full flex items-center justify-center gap-2 p-4 rounded-2xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all font-bold text-xs"
+          >
             <LogOut size={16} /> QUITTER
           </button>
         </div>
@@ -78,7 +92,6 @@ export default function AdminLayout({ children }) {
 
       {/* ZONE DE CONTENU PRINCIPAL */}
       <main className="flex-1 bg-black overflow-y-auto">
-        {/* Barre de recherche / Header haut */}
         <div className="h-20 border-b border-zinc-900 flex items-center justify-end px-10 gap-6">
            <div className="flex items-center gap-2">
              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
@@ -86,7 +99,6 @@ export default function AdminLayout({ children }) {
            </div>
         </div>
         
-        {/* Injection des pages (Dashboard, Schedule, etc.) */}
         <div className="p-10">
           {children}
         </div>

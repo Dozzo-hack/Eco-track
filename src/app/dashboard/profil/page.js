@@ -10,8 +10,8 @@ export default function ProfilPage() {
   
   const [isEditing, setIsEditing] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
+  const [quartiersBD, setQuartiersBD] = useState([]); // Contiendra la liste dynamique de la BD
 
-  // Structure initiale calquée sur ton modèle
   const [user, setUser] = useState({
     idUnique: "",
     nom: "",
@@ -24,9 +24,11 @@ export default function ProfilPage() {
 
   const [passwords, setPasswords] = useState({ old: "", new: "" });
 
-  // Charger les vraies données depuis MongoDB via notre API
+  // Charger les données utilisateur ET la liste des quartiers de la base de données
   useEffect(() => {
     if (status === "authenticated" && session?.user?.role === "user") {
+      
+      // 1. Récupérer le profil utilisateur
       const fetchProfileData = async () => {
         try {
           const res = await fetch("/api/user/profile");
@@ -40,24 +42,39 @@ export default function ProfilPage() {
           setLoadingData(false);
         }
       };
+
+      // 2. Récupérer la liste des quartiers configurés en BD
+      const fetchQuartiersDisponibles = async () => {
+        try {
+          const res = await fetch("/api/quartiers"); // Appel de l'API publique
+          const result = await res.json();
+          if (result.success) {
+            // Extraction des noms de quartiers uniques en lettres majuscules
+            const listeNoms = result.data.map(q => q.nom.toUpperCase());
+            setQuartiersBD(listeNoms);
+          }
+        } catch (err) {
+          console.error("Erreur chargement des quartiers depuis la base de données:", err);
+        }
+      };
+
       fetchProfileData();
+      fetchQuartiersDisponibles();
     }
   }, [status, session]);
 
-  // Simulation d'import de photo (converti en Base64 ou géré par ton futur CDN)
   const handlePhotoClick = () => fileInputRef.current.click();
   const handlePhotoChange = (e) => {
     const file = e.target.files[0];
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setUser({ ...user, photo: reader.result }); // Stockage temporaire en string Base64
+        setUser({ ...user, photo: reader.result });
       };
       reader.readAsDataURL(file);
     }
   };
 
-  // Enregistrer les modifications en base de données
   const handleSave = async () => {
     try {
       const res = await fetch("/api/user/profile", {
@@ -67,7 +84,7 @@ export default function ProfilPage() {
           nom: user.nom,
           prenom: user.prenom,
           telephone: user.telephone,
-          quartier: user.quartier,
+          quartier: user.quartier?.toUpperCase(),
           photo: user.photo
         })
       });
@@ -90,7 +107,6 @@ export default function ProfilPage() {
     }
   };
 
-  // Modifier le mot de passe en sécurité
   const handleUpdatePassword = async () => {
     if (!passwords.old || !passwords.new) {
       Swal.fire({ icon: "warning", text: "Veuillez remplir les champs de mot de passe." });
@@ -119,7 +135,6 @@ export default function ProfilPage() {
     }
   };
 
-  // ── SÉCURITÉ DES ACCÈS VIA LA SESSION ──
   if (status === "loading" || (status === "authenticated" && loadingData)) {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-zinc-50 gap-2">
@@ -142,7 +157,7 @@ export default function ProfilPage() {
   return (
     <div className="pt-24 lg:pt-0 pb-24 space-y-8 animate-in fade-in duration-500">
       
-      {/* SECTION HEADER : PHOTO & ID */}
+      {/* SECTION HEADER */}
       <div className="bg-white rounded-[45px] p-8 shadow-sm border border-gray-50 flex flex-col md:flex-row items-center gap-8">
         <div className="relative group cursor-pointer" onClick={handlePhotoClick}>
           <div className="h-32 w-32 rounded-[40px] bg-[#6200ee] overflow-hidden flex items-center justify-center border-4 border-white shadow-xl">
@@ -162,7 +177,7 @@ export default function ProfilPage() {
 
         <div className="text-center md:text-left space-y-2">
           <div className="inline-block px-4 py-1 rounded-full bg-purple-50 text-[#6200ee] text-[10px] font-black uppercase tracking-tighter border border-purple-100 font-mono">
-            ID CLIENT : {user.idUnique}
+            ID CLIENT : {user.idUnique || "N/A"}
           </div>
           <h1 className="text-3xl font-black text-gray-900 tracking-tighter">{user.prenom} {user.nom}</h1>
           <p className="text-gray-400 font-bold">{user.email}</p>
@@ -188,8 +203,7 @@ export default function ProfilPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-        {/* COLONNE INFOS (2/3) */}
+        {/* COLONNE INFOS */}
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white rounded-[45px] p-10 border border-gray-100 shadow-sm">
             <h3 className="text-lg font-black text-gray-800 mb-8 flex items-center gap-3">
@@ -202,15 +216,24 @@ export default function ProfilPage() {
               <ProfileField label="Prénom" value={user.prenom} isEditing={isEditing} onChange={(v) => setUser({...user, prenom: v})} />
               <ProfileField label="Email professionnel" value={user.email} isEditing={false} onChange={() => {}} type="email" className="opacity-70 cursor-not-allowed" />
               <ProfileField label="Téléphone" value={user.telephone} isEditing={isEditing} onChange={(v) => setUser({...user, telephone: v})} />
-              <ProfileField label="Quartier de résidence" value={user.quartier} isEditing={isEditing} onChange={(v) => setUser({...user, quartier: v})} className="md:col-span-2" />
+              
+              {/* Le champ injecte la liste quartiersBD chargée depuis MongoDB */}
+              <ProfileField 
+                label="Quartier de résidence" 
+                value={user.quartier} 
+                isEditing={isEditing} 
+                onChange={(v) => setUser({...user, quartier: v})} 
+                className="md:col-span-2"
+                type="select"
+                options={quartiersBD}
+              />
             </div>
           </div>
         </div>
 
-        {/* COLONNE SÉCURITÉ (1/3) */}
+        {/* COLONNE SÉCURITÉ */}
         <div className="bg-gray-50 rounded-[45px] p-10 border border-gray-200/50 flex flex-col">
           <h3 className="text-lg font-black text-gray-800 mb-8">Sécurité</h3>
-          
           <div className="space-y-6 flex-1">
             <div className="space-y-2">
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">Mot de passe actuel</label>
@@ -248,27 +271,40 @@ export default function ProfilPage() {
             </p>
           </div>
         </div>
-
       </div>
     </div>
   );
 }
 
-// Composant réutilisable inchangé pour les champs
-function ProfileField({ label, value, isEditing, onChange, className = "", type = "text" }) {
+function ProfileField({ label, value, isEditing, onChange, className = "", type = "text", options = [] }) {
+  const displayValue = (value === "NON SPÉCIFIÉ" || value === "Non spécifié" || value === "Non renseigné") ? "" : value;
+
   return (
     <div className={`space-y-2 ${className}`}>
       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">{label}</label>
       {isEditing ? (
-        <input 
-          type={type}
-          value={value} 
-          onChange={(e) => onChange(e.target.value)}
-          className="w-full bg-gray-50 border-2 border-[#6200ee]/10 rounded-2xl py-4 px-6 font-bold text-gray-700 outline-none focus:border-[#6200ee] transition-all"
-        />
+        type === "select" ? (
+          <select
+            value={displayValue}
+            onChange={(e) => onChange(e.target.value)}
+            className="w-full bg-gray-50 border-2 border-[#6200ee]/10 rounded-2xl py-4 px-6 font-bold text-gray-700 outline-none focus:border-[#6200ee] transition-all appearance-none custom-select"
+          >
+            <option value="">Sélectionnez votre quartier</option>
+            {options.map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        ) : (
+          <input 
+            type={type}
+            value={value} 
+            onChange={(e) => onChange(e.target.value)}
+            className="w-full bg-gray-50 border-2 border-[#6200ee]/10 rounded-2xl py-4 px-6 font-bold text-gray-700 outline-none focus:border-[#6200ee] transition-all"
+          />
+        )
       ) : (
         <div className="w-full bg-white border border-gray-50 rounded-2xl py-4 px-6 font-bold text-gray-800 shadow-sm italic">
-          {value || "Non renseigné"}
+          {value || "Non spécifié"}
         </div>
       )}
     </div>

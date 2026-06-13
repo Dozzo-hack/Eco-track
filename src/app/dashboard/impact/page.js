@@ -2,75 +2,75 @@
 import { useState, useEffect } from "react";
 
 export default function ImpactPage() {
-  // --- ÉTATS POUR LES DONNÉES DYNAMIQUES BDD ---
   const [stats, setStats] = useState({ co2Sav: "0kg", eauEco: "0L", arbresSauves: "0" });
   const [quizData, setQuizData] = useState(null);
   const [loadingQuiz, setLoadingQuiz] = useState(true);
   const [dejaFait, setDejaFait] = useState(false);
 
-  // --- ÉTATS DU JEU DE QUIZ ---
-  const [quizzStep, setQuizzStep] = useState("start"); // start, play, result, error
+  const [saviezVous, setSaviezVous] = useState("Recycler une seule tonne de papier permet de sauver 17 arbres et d'économiser 26 000 litres d'eau.");
+
+  const [quizzStep, setQuizzStep] = useState("start"); 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [reponsesChoisies, setReponsesChoisies] = useState([]);
   const [score, setScore] = useState(0);
   const [pointsGagnes, setPointsGagnes] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
-  // --- NOUVEAUX ÉTATS POUR L'UI FEEDBACK (VERT / ROUGE) ---
   const [selectedAnswer, setSelectedAnswer] = useState(null); 
   const [isShowingFeedback, setIsShowingFeedback] = useState(false);
 
-  const saviezVous = "Recycler une seule tonne de papier permet de sauver 17 arbres et d'économiser 26 000 litres d'eau.";
-
-  // --- CHARGEMENT INITIAL ET RE-VERIFICATION STRICTE ---
-useEffect(() => {
-  async function fetchData() {
-    try {
-      // 1. Récupération du profil utilisateur (pour ses stats d'impact réelles)
-      const userRes = await fetch("/api/user/profile"); 
-      if (userRes.ok) {
-        const userData = await userRes.json();
-        if (userData.success && userData.user?.impact) {
-          setStats({
-            co2Sav: `${userData.user.impact.co2Evite || 0}kg`,
-            eauEco: `${userData.user.impact.eauEconomisee || 0}L`,
-            arbresSauves: `${userData.user.impact.arbresSauves || 0}`
-          });
-        }
-      }
-
-      // 2. Récupération du quiz actif de la semaine
-      // AJOUT d'un timestamp à l'URL pour forcer le navigateur à contourner son propre cache local
-      const quizRes = await fetch(`/api/user/quizz?t=${new Date().getTime()}`);
-      if (quizRes.ok) {
-        const qData = await quizRes.json();
-        if (qData.success) {
-          setQuizData(qData);
-          setDejaFait(qData.dejaFait);
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const userRes = await fetch("/api/user/profile"); 
+        if (userRes.ok) {
+          const userData = await userRes.json();
+          const profile = userData.data || userData; 
           
-          // FORCE l'interface à se bloquer immédiatement si le serveur dit que c'est fait
-          if (qData.dejaFait) {
-            setQuizzStep("start"); // Reste sur l'affichage du blocage
+          if (profile?.impact) {
+            const imp = profile.impact;
+            setStats({
+              co2Sav: `${imp.co2Evite ?? 0}kg`,
+              eauEco: `${imp.eauEconomisee ?? 0}L`,
+              arbresSauves: `${imp.arbresSauves ?? 0}`
+            });
           }
         }
-      }
-    } catch (err) {
-      console.error("Erreur lors de la synchronisation des données:", err);
-    } finally {
-      setLoadingQuiz(false);
-    }
-  }
-  
-  // On réinitialise les états de progression pour éviter les restes d'une ancienne session de navigation
-  setCurrentQuestionIndex(0);
-  setReponsesChoisies([]);
-  
-  fetchData();
-}, []); // S'exécute à chaque fois que l'utilisateur revient sur la page
 
-  // --- GESTION DU CLIC DE RÉPONSE AVEC TIMEOUT ET COULEURS ---
+        const tipRes = await fetch("/api/admin/tip");
+        if (tipRes.ok) {
+          const tipData = await tipRes.json();
+          if (tipData.success && tipData.texte) {
+            setSaviezVous(tipData.texte);
+          }
+        }
+
+        const quizRes = await fetch(`/api/user/quizz?t=${new Date().getTime()}`);
+        if (quizRes.ok) {
+          const qData = await quizRes.json();
+          if (qData.success) {
+            setQuizData(qData);
+            setDejaFait(qData.dejaFait);
+            
+            if (qData.dejaFait) {
+              setQuizzStep("start"); 
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Erreur lors de la synchronisation des données:", err);
+      } finally {
+        setLoadingQuiz(false);
+      }
+    }
+    
+    setCurrentQuestionIndex(0);
+    setReponsesChoisies([]);
+    fetchData();
+  }, []);
+
   const handleSelectOption = (optionIndex) => {
-    if (isShowingFeedback) return; // Bloque le double clic pendant l'animation
+    if (isShowingFeedback) return;
 
     setSelectedAnswer(optionIndex);
     setIsShowingFeedback(true);
@@ -78,7 +78,6 @@ useEffect(() => {
     const nouvellesReponses = [...reponsesChoisies, optionIndex];
     setReponsesChoisies(nouvellesReponses);
 
-    // Attendre 1.5 seconde pour laisser l'utilisateur voir le retour Vert/Rouge
     setTimeout(() => {
       setIsShowingFeedback(false);
       setSelectedAnswer(null);
@@ -107,20 +106,26 @@ useEffect(() => {
       if (data.success) {
         setScore(data.scoreObtenu);
         setPointsGagnes(data.pointsGagnes);
-        setDejaFait(true); // Bloqué définitivement en local instantanément
+        setDejaFait(true); 
         setQuizzStep("result");
         
         if (data.scoreObtenu > 0) {
-          setStats(prev => ({
-            co2Sav: `${parseInt(prev.co2Sav) + (data.scoreObtenu * 2)}kg`,
-            eauEco: `${parseInt(prev.eauEco) + (data.scoreObtenu * 15)}L`,
-            arbresSauves: prev.arbresSauves
-          }));
+          setStats(prev => {
+            const co2Actuel = parseFloat(prev.co2Sav.replace("kg", "")) || 0;
+            const eauActuelle = parseInt(prev.eauEco.replace("L", "")) || 0;
+
+            return {
+              co2Sav: `${co2Actuel + (data.scoreObtenu * 2)}kg`,
+              eauEco: `${eauActuelle + (data.scoreObtenu * 15)}L`,
+              arbresSauves: prev.arbresSauves
+            };
+          });
         }
       } else {
         setQuizzStep("error");
       }
     } catch (err) {
+      console.error("Erreur soumission quiz:", err);
       setQuizzStep("error");
     } finally {
       setSubmitting(false);
@@ -128,48 +133,47 @@ useEffect(() => {
   };
 
   return (
-    <div className="pt-24 lg:pt-0 pb-24 space-y-10 animate-in fade-in duration-700">
-      <div className="space-y-2">
-        <h1 className="text-4xl font-black text-gray-900 tracking-tighter">Impact Écologique</h1>
-        <p className="text-gray-500 font-bold italic">Chaque geste compte. Voici le vôtre.</p>
+    <div className="pt-24 pb-24 px-4 max-w-7xl mx-auto space-y-10 overflow-x-hidden">
+      <div className="space-y-2 text-center sm:text-left">
+        <h1 className="text-3xl sm:text-4xl font-black text-gray-900 tracking-tighter">Impact Écologique</h1>
+        <p className="text-sm text-gray-500 font-bold italic">Chaque geste compte. Voici le vôtre.</p>
       </div>
 
       {/* Cartes de Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { label: "CO2 Évité", val: stats.co2Sav, icon: "fa-cloud", color: "bg-blue-50 text-blue-600" },
           { label: "Eau Économisée", val: stats.eauEco, icon: "fa-droplet", color: "bg-cyan-50 text-cyan-600" },
           { label: "Arbres Sauvés", val: stats.arbresSauves, icon: "fa-tree", color: "bg-green-50 text-green-600" },
         ].map((s, i) => (
-          <div key={i} className={`${s.color} p-8 rounded-[40px] shadow-sm flex flex-col items-center text-center`}>
-            <i className={`fa-solid ${s.icon} text-3xl mb-4`}></i>
-            <span className="text-3xl font-black tracking-tighter">{s.val}</span>
-            <span className="text-[10px] font-black uppercase opacity-60 tracking-widest">{s.label}</span>
+          <div key={i} className={`${s.color} p-6 sm:p-8 rounded-[30px] shadow-sm flex flex-col items-center text-center min-w-0`}>
+            <i className={`fa-solid ${s.icon} text-2xl sm:text-3xl mb-4`}></i>
+            <span className="text-2xl sm:text-3xl font-black tracking-tighter truncate w-full">{s.val}</span>
+            <span className="text-[10px] font-black uppercase opacity-60 tracking-widest mt-1">{s.label}</span>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        
-        {/* Section Quizz Dynamique */}
-        <div className="bg-[#6200ee] rounded-[45px] p-8 text-white shadow-xl relative overflow-hidden flex flex-col justify-between min-h-[320px]">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Section Quizz */}
+        <div className="bg-[#6200ee] rounded-[35px] p-6 text-white shadow-xl relative overflow-hidden flex flex-col justify-between min-h-[340px]">
           <div className="relative z-10 w-full">
-            <h2 className="text-2xl font-black mb-2 italic">
+            <h2 className="text-xl sm:text-2xl font-black mb-2 italic break-words">
               {quizData?.title || "Le Quizz du Vendredi 🧠"}
             </h2>
-            <p className="text-sm font-bold opacity-80 mb-8 text-purple-200">
-              {quizData?.description || "Répondez à 5 questions et gagnez jusqu'à 50 points !"}
+            <p className="text-xs sm:text-sm font-bold opacity-80 mb-6 text-purple-200 break-words">
+              {quizData?.description || "Répondez à vos questions et gagnez des points !"}
             </p>
 
             {loadingQuiz ? (
               <p className="text-xs font-mono tracking-widest animate-pulse uppercase text-yellow-300">
-                Synchronisation du satellite EcoTrack...
+                Synchronisation EcoTrack...
               </p>
             ) : dejaFait && quizzStep !== "result" ? (
-              <div className="bg-white/10 p-6 rounded-3xl border border-white/5">
-                <p className="text-sm font-black uppercase tracking-tight text-yellow-400 mb-1">Session Clôturée</p>
+              <div className="bg-white/10 p-5 rounded-2xl border border-white/5">
+                <p className="text-xs sm:text-sm font-black uppercase tracking-tight text-yellow-400 mb-1">Session Clôturée</p>
                 <p className="text-xs opacity-80 leading-relaxed">
-                  Vous avez déjà validé votre participation pour ce quiz. Revenez vendredi prochain pour un nouveau défi !
+                  Vous avez déjà validé votre participation pour ce quiz. Revenez très bientôt pour un nouveau défi !
                 </p>
               </div>
             ) : (
@@ -177,27 +181,26 @@ useEffect(() => {
                 {quizzStep === "start" && (
                   <button 
                     onClick={() => setQuizzStep("play")}
-                    className="bg-[#ffcc00] text-black px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg active:scale-95 transition-all cursor-pointer"
+                    className="bg-[#ffcc00] text-black px-6 py-3.5 rounded-xl font-black uppercase text-xs tracking-widest shadow-lg active:scale-95 transition-all cursor-pointer"
                   >
-                    Commencer (5 questions)
+                    Commencer le quiz
                   </button>
                 )}
 
                 {quizzStep === "play" && quizData?.questions && (
-                  <div className="space-y-6">
-                    <div className="flex justify-between items-center text-[10px] font-mono uppercase tracking-widest opacity-60">
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center text-[9px] font-mono uppercase tracking-widest opacity-60">
                       <span>Progression</span>
                       <span>{currentQuestionIndex + 1} / {quizData.questions.length}</span>
                     </div>
-                    <p className="font-bold bg-white/10 p-5 rounded-2xl text-sm leading-relaxed">
+                    <p className="font-bold bg-white/10 p-4 rounded-xl text-xs sm:text-sm leading-relaxed break-words">
                       {quizData.questions[currentQuestionIndex].questionText}
                     </p>
-                    <div className="grid grid-cols-1 gap-3">
+                    <div className="grid grid-cols-1 gap-2.5">
                       {quizData.questions[currentQuestionIndex].options.map((opt, i) => {
                         const isCorrect = i === quizData.questions[currentQuestionIndex].correctAnswerIndex;
                         const isSelected = i === selectedAnswer;
                         
-                        // Détermination dynamique des styles Tailwind pour le feedback de couleur
                         let btnStyle = "bg-white/10 border-white/5 text-white hover:bg-white/20";
                         if (isShowingFeedback) {
                           if (isCorrect) {
@@ -214,7 +217,7 @@ useEffect(() => {
                             key={i} 
                             onClick={() => handleSelectOption(i)} 
                             disabled={submitting || isShowingFeedback}
-                            className={`w-full py-4 rounded-2xl text-left px-6 font-bold text-xs transition-all border active:scale-[0.99] cursor-pointer ${btnStyle}`}
+                            className={`w-full py-3 rounded-xl text-left px-5 font-bold text-xs transition-all border active:scale-[0.99] cursor-pointer break-words ${btnStyle}`}
                           >
                             {opt}
                           </button>
@@ -226,56 +229,36 @@ useEffect(() => {
 
                 {quizzStep === "result" && (
                   <div className="text-center py-4 animate-in zoom-in-95 duration-300">
-                    <p className="text-6xl font-black text-[#ffcc00] mb-2">{score}/5</p>
-                    <p className="font-black uppercase tracking-wide text-sm">ANALYSE TERMINÉE !</p>
-                    <p className="text-xs opacity-80 mt-1 mb-4">
+                    <p className="text-5xl font-black text-[#ffcc00] mb-2">{score}/{quizData?.questions?.length || 5}</p>
+                    <p className="font-black uppercase tracking-wide text-xs">ANALYSE TERMINÉE !</p>
+                    <p className="text-xs opacity-80 mt-1 mb-4 px-2">
                       {pointsGagnes > 0 
                         ? `Félicitations, +${pointsGagnes} PTS ont été crédités sur votre compte.` 
-                        : "Dommage ! Il faut au moins 3 bonnes réponses pour débloquer les points."}
+                        : "Dommage ! Entraînez-vous pour le prochain quiz afin de débloquer les points."}
                     </p>
-                    <div className="inline-block bg-white/10 px-6 py-2 rounded-full border border-white/5 text-[10px] font-mono uppercase tracking-widest text-purple-200">
-                      Rendez-vous vendredi prochain !
-                    </div>
                   </div>
-                )}
-
-                {quizzStep === "error" && (
-                  <p className="text-xs text-red-300 font-bold">
-                    Une erreur est survenue lors de la validation. Veuillez actualiser la page.
-                  </p>
                 )}
               </>
             )}
           </div>
-          <i className="fa-solid fa-bolt absolute right-[-20px] top-[-20px] text-white/5 text-[150px] pointer-events-none"></i>
+          <i className="fa-solid fa-bolt absolute right-[-20px] top-[-20px] text-white/5 text-[120px] pointer-events-none"></i>
         </div>
 
         {/* Section Le Saviez-vous */}
-        <div className="bg-white rounded-[45px] p-8 border border-gray-100 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="h-12 w-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center text-xl">
+        <div className="bg-white rounded-[35px] p-6 border border-gray-100 shadow-sm flex flex-col justify-between min-h-[320px]">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="h-11 w-11 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center text-lg shrink-0">
               <i className="fa-solid fa-lightbulb"></i>
             </div>
-            <h2 className="text-xl font-black text-gray-800">Le Saviez-vous ?</h2>
+            <h2 className="text-lg font-black text-gray-800">Le Saviez-vous ?</h2>
           </div>
-          <p className="text-gray-600 font-bold leading-relaxed italic border-l-4 border-amber-200 pl-6 my-auto text-sm">
+          <p className="text-gray-600 font-bold leading-relaxed italic border-l-4 border-amber-200 pl-4 my-auto text-xs sm:text-sm break-words">
             "{saviezVous}"
           </p>
-          <div className="mt-8 pt-6 border-t border-gray-50 flex justify-between items-center">
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Mise à jour : Hebdomadaire</span>
-            <div className="flex gap-2">
-              <button className="h-8 w-8 rounded-full bg-gray-50 text-gray-400 flex items-center justify-center hover:bg-gray-100 transition-all"><i className="fa-solid fa-share-nodes"></i></button>
-            </div>
+          <div className="mt-6 pt-5 border-t border-gray-50 flex justify-between items-center shrink-0">
+            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Mise à jour : Admin</span>
           </div>
         </div>
-
-      </div>
-
-      {/* Barème de rappel des points du Quiz */}
-      <div className="bg-gray-50 rounded-[35px] p-6 flex flex-wrap justify-center gap-8 border border-dashed border-gray-200">
-        <div className="text-center"><p className="font-black text-gray-400 text-[10px] tracking-wider">3 RÉPONSES</p><p className="font-black text-[#6200ee] text-sm">10 PTS</p></div>
-        <div className="text-center"><p className="font-black text-gray-400 text-[10px] tracking-wider">4 RÉPONSES</p><p className="font-black text-[#6200ee] text-sm">25 PTS</p></div>
-        <div className="text-center"><p className="font-black text-gray-400 text-[10px] tracking-wider">5 RÉPONSES</p><p className="font-black text-[#6200ee] text-sm">50 PTS</p></div>
       </div>
     </div>
   );

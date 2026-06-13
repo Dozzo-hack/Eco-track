@@ -1,12 +1,8 @@
-// src/app/api/auth/register/route.js
-// Cette route gère l'inscription des nouveaux utilisateurs
-// Elle est appelée quand l'utilisateur clique sur "S'inscrire"
-
-// src/app/api/auth/register/route.js
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import User from "@/models/User";
 import bcrypt from "bcryptjs";
+import mongoose from "mongoose";
 
 export async function POST(request) {
   try {
@@ -39,24 +35,45 @@ export async function POST(request) {
       );
     }
 
-    // 4. Hachage (chiffrement) du mot de passe
+    // 4. RÉCUPÉRATION DE L'OBJECTID DU QUARTIER
+    const quartiersCollection = mongoose.connection.db.collection("quartiers");
+    const quartierDoc = await quartiersCollection.findOne({
+      nom: { $regex: `^${quartier.trim()}$`, $options: "i" }
+    });
+
+    // Si le quartier n'existe pas dans la base de données admin
+    if (!quartierDoc) {
+      return NextResponse.json(
+        { message: `Le quartier "${quartier}" n'est pas encore enregistré ou actif dans le système.` },
+        { status: 400 }
+      );
+    }
+
+    // 5. Hachage (chiffrement) du mot de passe
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 5. Création de l'utilisateur en base de données
+    // 6. Création de l'utilisateur avec abonnement Inactif / Bloqué par défaut
     const newUser = await User.create({
-      nom,
-      prenom,
-      email,
-      telephone,
-      quartier,
+      nom: nom.trim(),
+      prenom: prenom.trim(),
+      email: email.toLowerCase().trim(),
+      telephone: telephone.trim(),
+      quartier: quartierDoc._id, 
       password: hashedPassword,
-      role: "user", // Sécurité : on force le rôle user
+      role: "user",
+      abonnement: {
+        statut: "Inactif", // 🔥 Devient inactif par défaut : n'apparaîtra PAS sur la feuille de route du camion
+        type: "Aucun",     // 🔥 "Aucun" ou chaîne vide tant que le choix du forfait et le paiement ne sont pas validés
+        dateDebut: null    // Sera initialisé au moment exact du webhook de paiement réussi
+      },
+      points: 0,
+      ecoPoints: 0
     });
 
     return NextResponse.json(
-      { message: "Utilisateur enregistré avec succès !", userId: newUser._id },
-      { status: 201 } // 201 = Created
+      { message: "Utilisateur enregistré avec succès ! Veuillez procéder au paiement pour activer votre compte.", userId: newUser._id },
+      { status: 201 }
     );
 
   } catch (error) {

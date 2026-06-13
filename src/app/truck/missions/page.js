@@ -18,14 +18,31 @@ export default function MissionsPage() {
   const [clientEnCoursDeScan, setClientEnCoursDeScan] = useState(null);
   const scannerRef = useRef(null);
 
+  // 🌟 NOUVEAU : État pour mémoriser si le chauffeur a une commande Premium assignée en cours
+  const [commandePremiumId, setCommandePremiumId] = useState(null);
+
   useEffect(() => {
     fetchZones();
+    verifierCommandePremiumEnCours();
     return () => {
       if (scannerRef.current) {
         scannerRef.current.stop().catch(err => console.log("Nettoyage caméra:", err));
       }
     };
   }, []);
+
+  // Vérifier si le chauffeur connecté possède une commande Premium directe
+  const verifierCommandePremiumEnCours = async () => {
+    try {
+      const res = await fetch('/api/truck/missions?type=premium');
+      const data = await res.json();
+      if (data.success && data.commandePremiumActive) {
+        setCommandePremiumId(data.commandePremiumActive._id);
+      }
+    } catch (err) {
+      console.log("Erreur vérification Premium:", err);
+    }
+  };
 
   const fetchZones = async () => {
     setLoadingZones(true);
@@ -49,7 +66,37 @@ export default function MissionsPage() {
     }
   };
 
+  // 🔥 TERMINER TOURNÉE STANDARD OU ACTION FIN VIDANGE PREMIUM
   const handleToggleTournee = async (action) => {
+    // Si le chauffeur valide une commande Premium active
+    if (action === "STOP" && commandePremiumId) {
+      const confirmer = confirm("Confirmez-vous la clôture et la fin de cette opération de vidange Premium ?");
+      if (!confirmer) return;
+
+      try {
+        const res = await fetch('/api/truck/missions', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ commandeId: commandePremiumId, action: "FINALISER_PREMIUM" })
+        });
+        const data = await res.json();
+        if (data.success) {
+          alert("Mission Premium terminée ! Le camion repasse disponible.");
+          setCommandePremiumId(null);
+          setTourneeActive(false);
+          setSelectedQuartier(null);
+          setClients([]);
+          await fetchZones();
+        } else {
+          alert(data.message);
+        }
+      } catch (err) {
+        alert("Erreur de synchronisation avec le serveur.");
+      }
+      return;
+    }
+
+    // Comportement standard inchangé pour tes tournées normales
     try {
       const res = await fetch('/api/truck/tournee', {
         method: 'POST',
@@ -247,14 +294,14 @@ export default function MissionsPage() {
         </div>
       )}
 
-      {!tourneeActive ? (
+      {/* S'IL N'Y A PAS DE TOURNEE ET PAS DE PREMIUM ASSIGNÉ */}
+      {!tourneeActive && !commandePremiumId ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <div className="bg-orange-100 p-8 rounded-[50px] mb-6">
             <Play size={48} className="text-orange-500 ml-2" fill="currentColor" />
           </div>
           <h2 className="text-2xl font-black text-slate-800">Prêt pour le service ?</h2>
           <p className="text-gray-500 mb-8 mt-2">Activez votre tournée pour voir <br/> les points de collecte assignés.</p>
-          
           <button 
             onClick={() => handleToggleTournee("START")}
             className="w-full bg-orange-500 text-white p-6 rounded-[30px] font-black text-lg shadow-xl shadow-orange-200 active:scale-95 transition-all"
@@ -268,18 +315,23 @@ export default function MissionsPage() {
             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-black flex items-center gap-2 text-slate-800">
-                  <MapPin className="text-orange-500" size={24} /> Missions du jour
+                  <MapPin className="text-orange-500" size={24} /> {commandePremiumId ? "Mission Spéciale" : "Missions du jour"}
                 </h2>
                 <button 
                   onClick={() => handleToggleTournee("STOP")}
-                  className="bg-red-50 text-red-600 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border border-red-100"
+                  className="bg-red-50 text-red-600 px-4 py-2 rounded-full text-[10px] font-black uppercase tracking-widest border border-red-100 animate-pulse"
                 >
                   Terminer
                 </button>
               </div>
 
               <div className="space-y-4">
-                {(!quartiers || quartiers.length === 0) ? (
+                {commandePremiumId ? (
+                  <div className="bg-purple-900/10 p-5 rounded-[30px] border border-purple-200 text-center">
+                    <p className="text-purple-700 font-bold text-sm">Vous êtes actuellement assigné à une course d'extraction urgente (Premium).</p>
+                    <p className="text-xs text-gray-500 mt-1">Exécutez l'ordre puis appuyez sur le bouton "TERMINER" ci-dessus.</p>
+                  </div>
+                ) : (!quartiers || quartiers.length === 0) ? (
                   <p className="text-center text-gray-400 text-sm py-8">Aucun quartier actif trouvé pour le moment.</p>
                 ) : (
                   quartiers.map((q) => (
@@ -309,7 +361,7 @@ export default function MissionsPage() {
                 onClick={() => { setSelectedQuartier(null); setClients([]); }}
                 className="mb-6 flex items-center gap-1 text-orange-600 font-bold text-sm bg-orange-50 px-4 py-2 rounded-full"
               >
-                ← Retour aux zones
+                &larr; Retour aux zones
               </button>
               
               <div className="mb-6">
@@ -317,65 +369,43 @@ export default function MissionsPage() {
                 <p className="text-gray-500 text-sm italic">Optimisation du trajet : 5 min / client</p>
               </div>
 
-              {loadingClients ? (
-                <div className="flex flex-col items-center justify-center py-12 text-gray-400">
-                  <Loader2 className="animate-spin text-orange-500 mb-2" />
-                  <p className="text-xs">Recherche des abonnés...</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {(!clients || clients.length === 0) ? (
-                    <p className="text-center text-gray-400 text-sm py-8">Aucun client actif dans ce quartier.</p>
-                  ) : (
-                    clients.map((client) => {
-                      const estValide = client.statutCollecte === "Validé";
+              
+              <div className="space-y-4">
+                {(!clients || clients.length === 0) ? (
+                  <p className="text-center text-gray-400 text-sm py-8">Aucun client actif dans ce quartier.</p>
+                ) : (
+                  clients.map((client) => {
+                    const estValide = client.statutCollecte === "Validé";
 
-                      return (
-                        <div 
-                          key={client._id} 
-                          className={`bg-white p-5 rounded-[35px] shadow-md border-t-4 transition-all duration-300 ${
-                            estValide 
-                              ? 'border-green-500 opacity-40 scale-[0.98]' 
-                              : 'border-orange-500 opacity-100'
-                          }`}
-                        >
-                          <div className="flex justify-between items-start mb-4">
-                            <div>
-                              <div className="flex items-center gap-2 mb-1">
-                                {estValide ? (
-                                  <span className="text-[10px] font-black bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                    <CheckCircle2 size={10} /> COLLECTÉ
-                                  </span>
-                                ) : (
-                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${client.abonnement?.formule === 'Premium' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
-                                    {(client.abonnement?.formule || 'Standard').toUpperCase()}
-                                  </span>
-                                )}
-                                <span className="text-gray-300 text-[10px]">#{client._id ? client._id.substring(0, 6) : '------'}</span>
-                              </div>
-                              
-                              <h4 className={`font-bold text-lg text-slate-800 capitalize ${estValide ? 'line-through text-gray-400' : ''}`}>
-                                {client.nom} {client.prenom}
-                              </h4>
-                              
-                              <p className="text-gray-500 text-xs flex items-center gap-1 mt-0.5">
-                                <MapPin size={12} /> {client.adresse?.rue || "Quartier " + selectedQuartier.nom}
-                              </p>
+                    return (
+                      <div 
+                        key={client._id} 
+                        className={`bg-white p-5 rounded-[35px] shadow-md border-t-4 transition-all duration-300 ${
+                          estValide ? 'border-green-500 opacity-40 scale-[0.98]' : 'border-orange-500'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              {estValide ? (
+                                <span className="text-[10px] font-black bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                  <CheckCircle2 size={10} /> COLLECTÉ
+                                </span>
+                              ) : (
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${client.abonnement?.formule === 'Premium' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'}`}>
+                                  {(client.abonnement?.formule || 'Standard').toUpperCase()}
+                                </span>
+                              )}
                             </div>
-                            
-                            <div className={`p-2 rounded-xl flex flex-col items-center min-w-[55px] ${estValide ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-600'}`}>
-                              <Star size={16} fill="currentColor" />
-                              <span className="text-xs font-black">{client.ecoPoints}</span>
-                              <span className="text-[8px] font-black uppercase text-gray-400">Pts</span>
-                            </div>
+                            <h4 className="font-bold text-lg text-slate-800 capitalize">{client.nom} {client.prenom}</h4>
                           </div>
-
-                          <div className="grid grid-cols-2 gap-3">
-                            <button 
-                              disabled={estValide || actionLoading === `${client._id}-SCAN_BAC`}
-                              onClick={() => ouvrirFenetreScanner(client)}
-                              className="bg-slate-900 text-white py-4 rounded-2xl flex items-center justify-center gap-2 text-xs font-bold active:scale-95 transition-all disabled:opacity-50 disabled:pointer-events-none"
-                            >
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <button 
+                            disabled={estValide}
+                            onClick={() => ouvrirFenetreScanner(client)}
+                            className="bg-slate-900 text-white py-4 rounded-2xl flex items-center justify-center gap-2 text-xs font-bold"
+                          >
                               {actionLoading === `${client._id}-SCAN_BAC` ? (
                                 <Loader2 className="animate-spin" size={18} />
                               ) : (
@@ -394,14 +424,14 @@ export default function MissionsPage() {
                               ) : (
                                 "+ POINTS TRI"
                               )}
-                            </button>
-                          </div>
+                          </button>
                         </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            
             </div>
           )}
         </>
