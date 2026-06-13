@@ -16,7 +16,7 @@ export async function GET() {
     const formattedUsers = realUsers.map(user => ({
       id: user._id.toString(), // On convertit l'ObjectId de MongoDB en String
       nom: user.name || user.nom || "Utilisateur Sans Nom",
-      quartier: user.quartier || "Non spécifié",
+      quartier: user.quartier|| "Non spécifié",
       plan: (user.plan || "STANDARD").toUpperCase(),
       points: user.points || 0,
       statut: user.statut || "Actif"

@@ -1,3 +1,4 @@
+// src/models/Transaction.js
 import mongoose from "mongoose";
 
 const TransactionSchema = new mongoose.Schema(
@@ -7,7 +8,7 @@ const TransactionSchema = new mongoose.Schema(
       required: true,
       unique: true,
       trim: true,
-      index: true, // Indexation pour des recherches ultra-rapides en cas de litige
+      index: true,
     },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -17,66 +18,73 @@ const TransactionSchema = new mongoose.Schema(
     },
     userName: {
       type: String,
-      required: true, // Duplication textuelle pour préserver l'historique en cas d'altération du compte
+      required: true,
     },
     typeAbonnement: {
       type: String,
       required: true,
-      enum: ["Basic", "Immeuble", "Premium"],
+      enum: ["Aucun",
+        "FOYER ÉCO", "Foyer Éco", "Foyer Eco", "foyer éco", "foyer eco",
+        "FOYER PREMIUM", "Foyer Premium", "foyer premium",
+        "IMMEUBLE", "Immeuble", "immeuble",
+        "PRO STANDARD", "Pro Standard", "pro standard",
+        "PRO BUSINESS", "Pro Business", "pro business"
+      ],
     },
     nombreAppartements: {
       type: Number,
-      default: 1, // Utile pour le calcul personnalisé de la formule "Immeuble"
+      default: 1,
     },
     montant: {
       type: Number,
-      required: true, // Montant exact payé en FCFA
+      required: true,
     },
     operateur: {
       type: String,
       required: true,
-      enum: ["Orange Money", "MTN MoMo", "Wave", "Cash / Manuel"],
+      enum: ["Orange Money", "MTN MoMo", "Wave", "Cash / Manuel", "Campay", "campay", "ORANGE", "MTN"],
     },
     statut: {
       type: String,
       required: true,
-      enum: ["En attente", "Réussi", "Échoué"],
-      default: "En attente",
+      enum: ["En attente", "Réussi","Inactif", "Échoué"],
+      default: "Inactif",
       index: true,
     },
     metadata: {
-      telephonePaiement: { type: String }, // Le numéro qui a initié le transfert
-      idTransactionOperateur: { type: String }, // L'ID retourné par l'API Orange/MTN
-      raisonEchec: { type: String }, // Description si la transaction passe à "Échoué"
+      telephonePaiement: { type: String },
+      idTransactionOperateur: { type: String },
+      raisonEchec: { type: String },
     },
-    historiqueStatuts: [
-      {
-        ancienStatut: { type: String },
-        nouveauStatut: { type: String },
-        dateModification: { type: Date, default: Date.now },
-        modifiePar: { type: String, default: "Système" }, // Peut être "Système" ou l'ID d'un Admin
-      },
-    ],
+    // On initialise directement le premier état ici pour éviter d'avoir besoin d'un middleware pre-save
+    historiqueStatuts: {
+      type: [
+        {
+          ancienStatut: { type: String },
+          nouveauStatut: { type: String },
+          dateModification: { type: Date, default: Date.now },
+          modifiePar: { type: String },
+        },
+      ],
+      default: () => [
+        {
+          ancienStatut: "Aucun",
+          nouveauStatut: "En attente",
+          dateModification: new Date(),
+          modifiePar: "Système / Initialisation",
+        },
+      ],
+    },
   },
   {
-    timestamps: true, // Génère automatiquement createdAt (date de l'opération) et updatedAt
+    timestamps: true,
   }
 );
 
-// Middleware Mongoose : Enregistre automatiquement les changements d'états pour l'audit en cas de litige
-TransactionSchema.pre("save", function (next) {
-  if (this.isModified("statut")) {
-    const historique = this.historiqueStatuts;
-    const ancien = historique.length > 0 ? historique[historique.length - 1].nouveauStatut : "Aucun";
-    
-    this.historiqueStatuts.push({
-      ancienStatut: ancien,
-      nouveauStatut: this.statut,
-      dateModification: new Date(),
-      modifiePar: "Système / Webhook API",
-    });
-  }
-  next();
-});
+// Forcer la suppression du modèle en cache s'il existe pour écraser le bug du Hot-Reload
+if (mongoose.models.Transaction) {
+  delete mongoose.models.Transaction;
+}
 
-export default mongoose.models.Transaction || mongoose.model("Transaction", TransactionSchema);
+const Transaction = mongoose.model("Transaction", TransactionSchema);
+export default Transaction;

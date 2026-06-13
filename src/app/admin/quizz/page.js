@@ -9,8 +9,38 @@ export default function AdminQuizCreator() {
   const [description, setDescription] = useState("Répondez à 5 questions et gagnez jusqu'à 50 points !");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: "", text: "" });
+  
+  // États pour le message hebdomadaire "Le Saviez-vous"
+  const [tipTexte, setTipTexte] = useState("");
+  const [publishingTip, setPublishingTip] = useState(false);
 
-  // Initialisation d'un squelette de 5 questions vides
+  // Fonction de soumission de l'anecdote
+  const handlePublishTip = async (e) => {
+    e.preventDefault();
+    if (!tipTexte.trim()) return;
+    setPublishingTip(true);
+
+    try {
+      const res = await fetch("/api/admin/tip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ texte: tipTexte }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert("💡 Le Saviez-vous envoyé avec succès à tous les utilisateurs !");
+        setTipTexte("");
+      } else {
+        alert("Erreur: " + data.message);
+      }
+    } catch (err) {
+      alert("Impossible de joindre le serveur.");
+    } finally {
+      setPublishingTip(false);
+    }
+  };
+
+  // Initialisation de 5 questions vides
   const [questions, setQuestions] = useState(
     Array(5).fill(null).map((_, i) => ({
       questionText: ``,
@@ -19,34 +49,29 @@ export default function AdminQuizCreator() {
     }))
   );
 
-  // Gestion des changements dans les champs textuels des questions
   const handleQuestionTextChange = (index, val) => {
     const updated = [...questions];
     updated[index].questionText = val;
     setQuestions(updated);
   };
 
-  // Gestion des changements pour les propositions de réponses
   const handleOptionChange = (qIndex, oIndex, val) => {
     const updated = [...questions];
     updated[qIndex].options[oIndex] = val;
     setQuestions(updated);
   };
 
-  // Sélection de l'index de la bonne réponse
   const handleCorrectAnswerChange = (qIndex, oIndex) => {
     const updated = [...questions];
     updated[qIndex].correctAnswerIndex = Number(oIndex);
     setQuestions(updated);
   };
 
-  // Envoi au serveur
-  const handleSubmit = async (e) => {
+  const handleQuizSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    setLoading(true); // <-- Correction de la faute de frappe ici
     setMessage({ type: "", text: "" });
 
-    // Petite vérification avant l'envoi
     for (let i = 0; i < questions.length; i++) {
       if (!questions[i].questionText.trim() || questions[i].options.some(opt => !opt.trim())) {
         setMessage({ type: "error", text: `Veuillez remplir intégralement la Question ${i + 1} et toutes ses options.` });
@@ -99,7 +124,38 @@ export default function AdminQuizCreator() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-10">
+      {/* SECTION AUTONOME : LE SAVIEZ-VOUS (Sortie du formulaire global) */}
+      <div className="rounded-[40px] bg-[#111] p-8 border border-zinc-800 shadow-sm space-y-6 mb-10">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center text-lg">
+            <i className="fa-solid fa-lightbulb"></i>
+          </div>
+          <div>
+            <h3 className="text-sm font-black uppercase text-zinc-200 tracking-wider">MESSAGE HEBDOMADAIRE : LE SAVIEZ-VOUS ?</h3>
+            <p className="text-xs text-zinc-500 font-bold">Saisissez l'anecdote verte qui sera poussée sur les écrans des abonnés chaque vendredi.</p>
+          </div>
+        </div>
+
+        <form onSubmit={handlePublishTip} className="space-y-4">
+          <textarea
+            value={tipTexte}
+            onChange={(e) => setTipTexte(e.target.value)}
+            placeholder="Ex: Recycler une seule tonne de papier permet de sauver 17 arbres et d'économiser 26 000 litres d'eau..."
+            className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl py-4 px-6 font-bold text-sm text-zinc-300 outline-none h-24 resize-none focus:ring-2 focus:ring-emerald-500/20 placeholder-zinc-600"
+          ></textarea>
+          
+          <button
+            type="submit"
+            disabled={publishingTip || !tipTexte.trim()}
+            className="px-6 py-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 disabled:opacity-30 disabled:hover:bg-emerald-500 text-black font-black text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center gap-2 cursor-pointer"
+          >
+            {publishingTip ? "Publication..." : "Publier l'anecdote"}
+          </button>
+        </form>
+      </div>
+
+      {/* FORMULAIRE PRINCIPAL : CONFIGURATION DU QUIZ */}
+      <form onSubmit={handleQuizSubmit} className="space-y-10">
         
         {/* BLOC INFOS GENERALES */}
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-[45px] p-8 space-y-6">
@@ -178,7 +234,7 @@ export default function AdminQuizCreator() {
           ))}
         </div>
 
-        {/* BOUTON DE SOUMISSION */}
+        {/* BOUTON DE SOUMISSION DU QUIZ */}
         <button
           type="submit"
           disabled={loading}

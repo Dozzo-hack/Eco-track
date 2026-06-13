@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function UserRegister() {
@@ -12,13 +12,32 @@ export default function UserRegister() {
   const [prenom, setPrenom] = useState("");
   const [email, setEmail] = useState("");
   const [telephone, setTelephone] = useState("");
-  const [quartier, setQuartier] = useState("");
+  const [quartier, setQuartier] = useState(""); // Contiendra le nom du quartier sélectionné
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
 
+  const [quartiersDisponibles, setQuartiersDisponibles] = useState([]);
   const [erreur, setErreur] = useState("");
   const [succes, setSucces] = useState("");
   const [chargement, setChargement] = useState(false);
+
+  // Charger dynamiquement la liste des quartiers actifs à l'ouverture de la page
+  useEffect(() => {
+    async function fetchQuartiersActifs() {
+      try {
+        const res = await fetch("/api/admin/quartiers");
+        const result = await res.json();
+        if (result.success) {
+          // Filtrer pour ne conserver que les secteurs ouverts à l'inscription
+          const actifs = result.data.filter((q) => q.estActif);
+          setQuartiersDisponibles(actifs);
+        }
+      } catch (err) {
+        console.error("Erreur de chargement des secteurs :", err);
+      }
+    }
+    fetchQuartiersActifs();
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -28,6 +47,11 @@ export default function UserRegister() {
     // Vérification côté client : les mots de passe correspondent ?
     if (password !== confirm) {
       setErreur("Les mots de passe ne correspondent pas.");
+      return;
+    }
+
+    if (!quartier) {
+      setErreur("Veuillez sélectionner un quartier de résidence.");
       return;
     }
 
@@ -69,8 +93,6 @@ export default function UserRegister() {
         </div>
 
         <form onSubmit={handleSubmit} className="mt-10 space-y-3">
-
-          {/* Chaque input a son propre value + onChange */}
           <div className="relative">
             <i className="fa-solid fa-user absolute left-5 top-1/2 -translate-y-1/2 text-[#6200ee]"></i>
             <input type="text" placeholder="Nom" value={nom}
@@ -87,7 +109,6 @@ export default function UserRegister() {
 
           <div className="relative">
             <i className="fa-solid fa-at absolute left-5 top-1/2 -translate-y-1/2 text-[#6200ee]"></i>
-            {/* Correction : placeholder était "ADM-2026", c'est un champ email */}
             <input type="email" placeholder="Email" value={email}
               onChange={(e) => setEmail(e.target.value)} required
               className="w-full rounded-2xl bg-[#eff4ff] py-4 pl-14 pr-5 text-sm font-medium text-gray-800 outline-none" />
@@ -100,11 +121,23 @@ export default function UserRegister() {
               className="w-full rounded-2xl bg-[#eff4ff] py-4 pl-14 pr-5 text-sm font-medium text-gray-800 outline-none" />
           </div>
 
+          {/* Remplacement du champ texte Quartier par un Select Dynamique */}
           <div className="relative">
-            <i className="fa-solid fa-location-dot absolute left-5 top-1/2 -translate-y-1/2 text-[#6200ee]"></i>
-            <input type="text" placeholder="Quartier de résidence" value={quartier}
-              onChange={(e) => setQuartier(e.target.value)} required
-              className="w-full rounded-2xl bg-[#eff4ff] py-4 pl-14 pr-5 text-sm font-medium text-gray-800 outline-none" />
+            <i className="fa-solid fa-location-dot absolute left-5 top-1/2 -translate-y-1/2 text-[#6200ee] z-10"></i>
+            <select
+              value={quartier}
+              onChange={(e) => setQuartier(e.target.value)}
+              required
+              className="w-full rounded-2xl bg-[#eff4ff] py-4 pl-14 pr-5 text-sm font-medium text-gray-800 outline-none appearance-none"
+            >
+              <option value="" className="text-gray-400">Sélectionnez votre quartier</option>
+              {quartiersDisponibles.map((q) => (
+                <option key={q._id} value={q.nom} className="text-gray-800">
+                  {q.nom}
+                </option>
+              ))}
+            </select>
+            <i className="fa-solid fa-chevron-down absolute right-5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-xs"></i>
           </div>
 
           <div className="relative">
@@ -118,7 +151,7 @@ export default function UserRegister() {
             <i className="fa-solid fa-check-double absolute left-5 top-1/2 -translate-y-1/2 text-[#6200ee]"></i>
             <input type="password" placeholder="Confirmer le mot de passe" value={confirm}
               onChange={(e) => setConfirm(e.target.value)} required
-              className="w-full rounded-2xl bg-[#f4f4f4] py-4 pl-14 pr-5 text-sm font-medium text-gray-400 outline-none" />
+              className="w-full rounded-2xl bg-[#eff4ff] py-4 pl-14 pr-5 text-sm font-medium text-gray-800 outline-none" />
           </div>
 
           {/* Messages d'erreur et de succès */}

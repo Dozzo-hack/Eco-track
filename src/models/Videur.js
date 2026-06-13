@@ -30,11 +30,13 @@ const VideurSchema = new mongoose.Schema(
     },
     // S'il a ["TOUS"], il voit tout (Chauffeur de départ). 
     // S'il a ["Akwa"], il ne voit que Akwa (Futurs chauffeurs).
-    quartiers: {
-      type: [String],
-      required: [true, "Au moins un quartier ou la mention 'TOUS' est obligatoire"],
-      default: ["TOUS"],
-    },
+   // Modifie uniquement le champ quartiers dans ton VideurSchema :
+quartiers: {
+  type: [mongoose.Schema.Types.ObjectId],
+  ref: "Quartier", // Assure-toi que c'est le nom exact du modèle de ta collection quartiers
+  required: [true, "Au moins un quartier est obligatoire"],
+  default: []
+},
     role: {
       type: String,
       default: "videur",

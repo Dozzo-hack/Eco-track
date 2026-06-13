@@ -18,6 +18,8 @@ export async function POST(request) {
       );
     }
 
+    // ... (Reste de ton code identique au début)
+
     // 2. Récupérer les données envoyées par le dashboard Admin
     const { nom, prenom, idChauffeur, codePin, zone } = await request.json();
 
@@ -40,25 +42,29 @@ export async function POST(request) {
       );
     }
 
-    // 4. Hachage du code PIN (comme pour un mot de passe classique)
+    // 4. Hachage du code PIN
     const salt = await bcrypt.genSalt(10);
     const hashedPin = await bcrypt.hash(codePin.toString(), salt);
 
-    // 5. Sauvegarde dans la base de données
-    const newVideur = await Videur.create({
-      nom,
-      prenom,
-      idChauffeur: formattedId,
-      codePin: hashedPin,
-      zone,
-      role: "videur",
-      actif: true
-    });
+    // Dans src/app/api/admin/create-videur/route.js
+// Remplace l'étape 5 (Sauvegarde dans la base de données) :
+
+const newVideur = await Videur.create({
+  nom,
+  prenom,
+  idChauffeur: formattedId,
+  codePin: hashedPin,
+  quartiers: [zone], // 🔑 L'ID reçu est directement poussé dans le tableau d'ObjectIds
+  role: "videur",
+  actif: true
+});
 
     return NextResponse.json(
       { message: "Compte chauffeur/videur créé avec succès !", id: newVideur._id },
       { status: 201 }
     );
+
+// ... (Reste du bloc catch)
 
   } catch (error) {
     console.error("Erreur lors de la création du videur par l'admin:", error);

@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Award, Send, Loader2, Phone, Mail, User, Check, MapPin, Calendar } from 'lucide-react';
+import { ArrowLeft, Award, Send, Loader2, Phone, Mail, User, Check, MapPin, Calendar, Crown } from 'lucide-react';
 import Swal from 'sweetalert2';
 
 export default function AdminUserDetailPage() {
@@ -10,18 +10,33 @@ export default function AdminUserDetailPage() {
   const chatEndRef = useRef(null);
 
   const [userData, setUserData] = useState(null);
+  const [quartiersBD, setQuartiersBD] = useState([]); // Référentiel des quartiers [{ id: "...", nom: "..." }]
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [inputMessage, setInputMessage] = useState("");
   const [pointsInput, setPointsInput] = useState("");
 
-  // 1. Charger les données réelles de l'utilisateur (Profil + Messages Chat)
+  // 1. Charger les données (Profil de l'utilisateur, Messages & Référentiel Quartiers)
   const loadUserAndChats = async () => {
     try {
+      setLoading(true);
+
+      // A. Charger la liste des quartiers pour décoder l'ID du client
+      const resQuartiers = await fetch("/api/quartiers");
+      const dataQuartiers = await resQuartiers.json();
+      let listeQuartiersMappee = [];
+      if (resQuartiers.ok && dataQuartiers.success) {
+        listeQuartiersMappee = dataQuartiers.data.map(q => ({
+          id: q._id.toString(),
+          nom: q.nom.toUpperCase().trim()
+        }));
+        setQuartiersBD(listeQuartiersMappee);
+      }
+
+      // B. Charger le profil du client et les chats
       const response = await fetch(`/api/admin/users/${id}`);
       const result = await response.json();
       if (response.ok && result.success) {
-        // Adapté selon que ton API retourne result.user ou result.data
         setUserData(result.user || result.data);
         setMessages(result.messages || []);
       }
@@ -40,6 +55,19 @@ export default function AdminUserDetailPage() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Helper pour convertir l'ID du quartier du client en vrai Nom textuel
+  const getQuartierNomAffiche = (userQuartierField) => {
+    if (!userQuartierField) return "NON SPÉCIFIÉ";
+    
+    if (typeof userQuartierField === 'object' && userQuartierField.nom) {
+      return userQuartierField.nom.toUpperCase();
+    }
+
+    const lookupId = userQuartierField.toString().trim();
+    const match = quartiersBD.find(q => q.id === lookupId || q.nom.toUpperCase() === lookupId.toUpperCase());
+    return match ? match.nom : lookupId.toUpperCase();
+  };
 
   // 2. Gestion des Points (Ajouter / Retirer en BDD)
   const handleUpdatePoints = async (action) => {
@@ -116,13 +144,12 @@ export default function AdminUserDetailPage() {
       const response = await fetch(`/api/admin/users/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "SEND_MESSAGE", text: messageText }), // Ajout du flag d'action si ta route est partagée
+        body: JSON.stringify({ action: "SEND_MESSAGE", text: messageText }),
       });
       
       const result = await response.json();
       if (!response.ok || !result.success) {
         Swal.fire({ icon: 'error', title: 'Erreur d\'envoi', text: 'Le message n\'a pas pu être enregistré.' });
-        // Optionnel : re-charger la discussion pour annuler l'UI optimiste en cas d'échec
         loadUserAndChats();
       } else if (result.messages) {
         setMessages(result.messages);
@@ -141,10 +168,13 @@ export default function AdminUserDetailPage() {
     );
   }
 
+  // Détermination dynamique de l'abonnement
+  const currentPlan = userData?.plan || userData?.abonnement?.type || "STANDARD";
+
   return (
     <div className="min-h-screen bg-[#09090b] text-white p-6 font-sans">
       
-      {/* Bouton Retour & Fil d'ariane style image_0a6202.png */}
+      {/* Bouton Retour & Fil d'ariane */}
       <div className="flex items-center gap-4 mb-8">
         <button 
           onClick={() => router.push("/admin/users")}
@@ -154,11 +184,11 @@ export default function AdminUserDetailPage() {
         </button>
         <div>
           <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block">Fiche Client Rapide</span>
-          <h2 className="text-xs font-mono text-emerald-500">UID: {userData?._id}</h2>
+          <h2 className="text-xs font-mono text-emerald-500">UID: {userData?._id || userData?.id}</h2>
         </div>
       </div>
 
-      {/* Grille principale à 3 colonnes comme sur ta maquette */}
+      {/* Grille principale à 3 colonnes */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
         
         {/* COLONNE 1 : POINTS & DETAILS DU COMPTE */}
@@ -173,7 +203,7 @@ export default function AdminUserDetailPage() {
                 <Award size={24} />
               </div>
               <span className="text-4xl font-black text-amber-400 font-mono tracking-tighter">
-                {userData?.points ?? 0} <span className="text-xs text-zinc-500 font-sans uppercase font-bold">PTS</span>
+                {userData?.ecoPoints ?? userData?.points ?? 0} <span className="text-xs text-zinc-500 font-sans uppercase font-bold">PTS</span>
               </span>
             </div>
 
@@ -210,7 +240,7 @@ export default function AdminUserDetailPage() {
               <div className="bg-zinc-900/50 p-3 rounded-xl border border-zinc-900">
                 <span className="text-[9px] text-zinc-500 block uppercase font-bold tracking-wider">Client</span>
                 <p className="text-xs font-bold text-zinc-200 flex items-center gap-2 mt-0.5">
-                  <User size={12} className="text-zinc-500"/> {userData?.prenom} {userData?.nom}
+                  <User size={12} className="text-zinc-500"/> {userData?.prenom || ""} {userData?.nom || "Abonné"}
                 </p>
               </div>
 
@@ -231,25 +261,31 @@ export default function AdminUserDetailPage() {
               <div className="bg-zinc-900/50 p-3 rounded-xl border border-zinc-900">
                 <span className="text-[9px] text-zinc-500 block uppercase font-bold tracking-wider">Quartier</span>
                 <p className="text-xs font-bold text-zinc-200 flex items-center gap-2 mt-0.5">
-                  <MapPin size={12} className="text-zinc-500"/> {userData?.quartier || "Non spécifié"}
+                  {/* 🔑 Résolution dynamique du nom du quartier à la place de l'ID */}
+                  <MapPin size={12} className="text-zinc-500"/> {getQuartierNomAffiche(userData?.quartiers || userData?.quartier)}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Bloc Statut d'Abonnement Mensuel (Futur Branchement Backend) */}
-          <div className="bg-zinc-950 border border-zinc-900 rounded-[2.5rem] p-6 space-y-3 shadow-xl border-l-4 border-l-purple-500">
+          {/* Bloc Statut d'Abonnement Mensuel Dynamique */}
+          <div className={`bg-zinc-950 border border-zinc-900 rounded-[2.5rem] p-6 space-y-3 shadow-xl border-l-4 ${currentPlan.toUpperCase() === 'PREMIUM' ? 'border-l-purple-500' : 'border-l-zinc-700'}`}>
             <span className="text-[10px] font-black tracking-widest text-zinc-500 uppercase block">Abonnement Mensuel</span>
             <div className="flex justify-between items-center bg-zinc-900/30 p-3 rounded-xl border border-zinc-900">
               <div className="flex items-center gap-2">
-                <Calendar size={14} className="text-purple-400" />
+                {currentPlan.toUpperCase() === 'PREMIUM' ? (
+                  <Crown size={14} className="text-purple-400" />
+                ) : (
+                  <Calendar size={14} className="text-zinc-400" />
+                )}
                 <div className="text-left">
-                  <p className="text-xs font-bold text-zinc-300">Fin d'abonnement</p>
-                  <p className="text-[10px] text-zinc-500 font-mono mt-0.5">Prochaine facture automatique</p>
+                  <p className="text-xs font-bold text-zinc-300">Formule : {currentPlan.toUpperCase()}</p>
+                  <p className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                    {userData?.statut === "Actif" || userData?.actif === true ? "Abonnement Actif" : "Compte Inactif"}
+                  </p>
                 </div>
               </div>
-              {/* Conteneur prêt à recevoir la vraie date */}
-              <span className="bg-purple-500/10 border border-purple-500/20 text-purple-400 font-mono text-xs font-bold px-3 py-1 rounded-lg">
+              <span className={`font-mono text-xs font-bold px-3 py-1 rounded-lg ${currentPlan.toUpperCase() === 'PREMIUM' ? 'bg-purple-500/10 border border-purple-500/20 text-purple-400' : 'bg-zinc-900 border border-zinc-800 text-zinc-400'}`}>
                 {userData?.finAbonnement ? new Date(userData.finAbonnement).toLocaleDateString("fr-FR") : "30 Jours Restants"}
               </span>
             </div>
@@ -274,7 +310,7 @@ export default function AdminUserDetailPage() {
                 <div key={item._id || idx} className="bg-zinc-900/50 p-4 rounded-2xl border border-zinc-900 flex items-center justify-between gap-4">
                   <div>
                     <p className="text-xs font-bold text-zinc-200">{item.name}</p>
-                    <span className="text-[10px] text-purple-400 font-mono font-bold">-{item.price} PTS</span>
+                    <span className="text-[10px] text-purple-400 font-mono font-bold">-{item.price || item.pointsCout || 0} PTS</span>
                     <span className="block text-[9px] text-zinc-600 font-mono mt-1">
                       {item.dateEchange ? new Date(item.dateEchange).toLocaleDateString("fr-FR") : ""}
                     </span>
@@ -307,7 +343,7 @@ export default function AdminUserDetailPage() {
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <h3 className="text-xs font-black uppercase tracking-wider text-zinc-300">Chat Support</h3>
             </div>
-            <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">Discussion Directe</span>
+            <span className="text-[10px] font-mono text-zinc-500 tracking-widest">DISCUSSION DIRECTE</span>
           </div>
 
           {/* Flux de messages */}

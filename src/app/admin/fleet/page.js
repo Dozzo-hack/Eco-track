@@ -27,16 +27,22 @@ export default function AdminFleetPage() {
       const result = await response.json();
 
       if (response.ok && result.success) {
-        // On adapte les données reçues de MongoDB pour ton super design
-        const formattedData = result.data.map((videur) => ({
-          id: videur.idChauffeur || videur._id,
-          plaque: "AFFECTATION...", // Tu pourras lier cela à ton modèle Collecte/Camion plus tard
-          chauffeur: `${videur.prenom} ${videur.nom.substring(0, 1)}.`,
-          zone: videur.zone || "Non définie",
-          capacite: 0, // Géré dynamiquement plus tard avec tes collectes
-          statut: "DISPONIBLE",
-          incident: null
-        }));
+        const formattedData = result.data.map((videur) => {
+          const initialenom = videur.nom ? `${videur.nom.substring(0, 1)}.` : "";
+          const prenomChauffeur = videur.prenom || "Chauffeur";
+          
+          return {
+            id: videur.idChauffeur || "ID_INCONNU",
+            databaseId: videur._id,
+            incidentId: videur.incidentId || null,
+            plaque: videur.plaqueCamion || "NON ASSIGNÉ", 
+            chauffeur: videur.prenom || videur.nom ? `${prenomChauffeur} ${initialenom}` : "Aucun assigné",
+            zone: videur.zone || "Non définie",
+            capacite: videur.capaciteRemplissage || 0, 
+            statut: videur.statut || "DISPONIBLE",
+            incident: videur.incidentActuel || null 
+          };
+        });
         setFleet(formattedData);
       } else {
         console.error("Erreur lors de la récupération :", result.message);
@@ -52,8 +58,26 @@ export default function AdminFleetPage() {
     fetchFleet();
   }, []);
 
-  // --- 2. FONCTION ENRÔLEMENT VIA BACKEND API ---
+  // --- 2. FONCTION ENRÔLEMENT DYNAMIQUE VIA BACKEND API ---
   const handleAddTruck = async () => {
+    let zonesOptions = "";
+    
+    try {
+      const resQuartiers = await fetch('/api/admin/quartiers');
+      const dataQuartiers = await resQuartiers.json();
+      
+      if (resQuartiers.ok && dataQuartiers.success && dataQuartiers.data.length > 0) {
+        zonesOptions = dataQuartiers.data
+          .map(q => `<option value="${q._id}">${q.nom}</option>`)
+          .join('');
+      } else {
+        zonesOptions = `<option value="" disabled>Aucun quartier configuré en base</option>`;
+      }
+    } catch (e) {
+      console.error("Impossible de récupérer les quartiers :", e);
+      zonesOptions = `<option value="" disabled>Erreur de liaison base de données</option>`;
+    }
+
     const { value: formValues } = await Swal.fire({
       title: '<span style="color:#fff; font-family:sans-serif; font-weight:900; letter-spacing:-1px;">ENRÔLER UNITÉ MOBILE</span>',
       background: '#0a0a0a',
@@ -79,9 +103,12 @@ export default function AdminFleetPage() {
           <input id="swal-idChauffeur" class="swal2-input" style="background:#1a1a1a; color:#fff; border:1px solid #333; margin:0;" placeholder="ex: VID-004">
           
           <label style="color:#666; font-size:10px; font-weight:bold; text-transform:uppercase;">Zone d'Affectation</label>
-          <input id="swal-zone" class="swal2-input" style="background:#1a1a1a; color:#fff; border:1px solid #333; margin:0;" placeholder="ex: Akwa, Bonapriso...">
+          <select id="swal-zone" class="swal2-input" style="background:#1a1a1a; color:#fff; border:1px solid #333; margin:0; width:100%; height:45px; padding:0 10px;">
+            <option value="" disabled selected>Sélectionner un secteur...</option>
+            ${zonesOptions}
+          </select>
 
-          <label style="color:#666; font-size:10px; font-weight:bold; text-transform:uppercase;">Code PIN Terminal (Chiffres)</label>
+          <label style="color:#666; font-size:10px; font-weight:bold; text-transform:uppercase;">Code PIN Terminal</label>
           <input id="swal-codePin" type="password" maxlength="6" class="swal2-input" style="background:#1a1a1a; color:#fff; border:1px solid #333; margin:0;" placeholder="PIN secret (ex: 1234)">
         </div>
       `,
@@ -89,7 +116,7 @@ export default function AdminFleetPage() {
         const nom = document.getElementById('swal-nom').value.trim();
         const prenom = document.getElementById('swal-prenom').value.trim();
         const idChauffeur = document.getElementById('swal-idChauffeur').value.trim();
-        const zone = document.getElementById('swal-zone').value.trim();
+        const zone = document.getElementById('swal-zone').value;
         const codePin = document.getElementById('swal-codePin').value.trim();
 
         if (!nom || !prenom || !idChauffeur || !zone || !codePin) {
@@ -114,9 +141,7 @@ export default function AdminFleetPage() {
           return;
         }
 
-        // Recharger proprement les données depuis MongoDB pour rafraîchir la liste sans doublons
         fetchFleet();
-        
         Swal.fire({ 
           icon: 'success', 
           title: 'Unité Enrôlée !', 
@@ -131,11 +156,32 @@ export default function AdminFleetPage() {
     }
   };
 
-  // --- 3. FONCTION : RÉSOUDRE INCIDENT ---
-  const resolveIncident = (id, e) => {
+  // --- 3. FONCTION : RÉSOUDRE INCIDENT DIRECTEMENT SUR LE MODÈLE INCIDENT ---
+  const resolveIncident = async (truck, e) => {
     e.preventDefault(); 
-    setFleet(fleet.map(t => t.id === id ? { ...t, incident: null } : t));
-    Swal.fire({ title: 'Alerte levée', icon: 'success', background: '#0a0a0a', color: '#fff' });
+    
+    if (!truck.incidentId) {
+      Swal.fire({ title: 'Erreur', text: 'ID de l\'incident introuvable.', icon: 'error', background: '#0a0a0a', color: '#fff' });
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/admin/resolve-incident', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ incidentId: truck.incidentId }),
+      });
+
+      if (response.ok) {
+        setFleet(fleet.map(t => t.databaseId === truck.databaseId ? { ...t, incident: null, incidentId: null } : t));
+        Swal.fire({ title: 'Alerte levée', text: 'L\'incident a été marqué comme résolu en base de données.', icon: 'success', background: '#0a0a0a', color: '#fff' });
+      } else {
+        const errData = await response.json();
+        Swal.fire({ title: 'Erreur', text: errData.message || 'Impossible de mettre à jour le statut.', icon: 'error', background: '#0a0a0a', color: '#fff' });
+      }
+    } catch (err) {
+      console.error("Erreur lors de la résolution de l'incident:", err);
+    }
   };
 
   return (
@@ -159,9 +205,9 @@ export default function AdminFleetPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
         {[
           { label: "Unités Totales", val: fleet.length, color: "text-white" },
-          { label: "En Service", val: fleet.filter(t => t.statut === "EN ROUTE").length, color: "text-green-500" },
+          { label: "En Service", val: fleet.filter(t => t.statut === "EN ROUTE" || t.statut === "DISPONIBLE").length, color: "text-green-500" },
           { label: "Au Garage", val: fleet.filter(t => t.statut === "MAINTENANCE").length, color: "text-orange-500" },
-          { label: "Alertes", val: fleet.filter(t => t.incident).length, color: "text-red-500" },
+          { label: "Alertes", val: fleet.filter(t => t.incident !== null).length, color: "text-red-500" },
         ].map((s, i) => (
           <div key={i} className="bg-zinc-900/50 border border-zinc-800 p-6 rounded-[2rem] hover:border-zinc-700 transition-colors">
             <p className="text-[10px] uppercase font-black text-zinc-500 mb-1">{s.label}</p>
@@ -196,11 +242,11 @@ export default function AdminFleetPage() {
           {fleet
             .filter(t => t.id.toLowerCase().includes(searchTerm.toLowerCase()) || t.chauffeur.toLowerCase().includes(searchTerm.toLowerCase()))
             .map((truck) => (
-            <div key={truck.id} className="bg-zinc-900/30 border border-zinc-800 p-6 rounded-[2.5rem] flex flex-wrap items-center justify-between hover:border-zinc-700 hover:bg-zinc-900/50 transition-all group">
+            <div key={truck.databaseId} className="bg-zinc-900/30 border border-zinc-800 p-6 rounded-[2.5rem] flex flex-wrap items-center justify-between hover:border-zinc-700 hover:bg-zinc-900/50 transition-all group">
               
               {/* Unité & Code */}
               <div className="flex items-center gap-6 min-w-[220px]">
-                <div className={`p-4 rounded-2xl ${truck.statut === 'MAINTENANCE' ? 'bg-zinc-800 text-zinc-600' : 'bg-green-500/10 text-green-500'}`}>
+                <div className={`p-4 rounded-2xl ${truck.incident ? 'bg-red-500/10 text-red-500 animate-pulse' : truck.statut === 'MAINTENANCE' ? 'bg-zinc-800 text-zinc-600' : 'bg-green-500/10 text-green-500'}`}>
                   <Truck size={28} />
                 </div>
                 <div>
@@ -214,7 +260,7 @@ export default function AdminFleetPage() {
                 <div>
                   <p className="text-[10px] text-zinc-600 font-bold uppercase mb-1 tracking-widest">Chauffeur</p>
                   <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${truck.chauffeur.includes('Aucun') ? 'bg-zinc-700' : 'bg-green-500 shadow-[0_0_8px_#22c55e]'}`} />
+                    <div className={`w-2 h-2 rounded-full ${truck.chauffeur === 'Aucun assigné' ? 'bg-zinc-700' : 'bg-green-500 shadow-[0_0_8px_#22c55e]'}`} />
                     <span className="text-sm font-bold text-zinc-300">{truck.chauffeur}</span>
                   </div>
                 </div>
@@ -245,19 +291,20 @@ export default function AdminFleetPage() {
               <div className="flex items-center gap-4">
                 {truck.incident && (
                   <div 
-                    onClick={(e) => resolveIncident(truck.id, e)}
-                    className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-xl text-[10px] font-black cursor-pointer animate-pulse"
-                    title="Cliquer pour résoudre"
+                    onClick={(e) => resolveIncident(truck, e)}
+                    className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-xl text-[10px] font-black cursor-pointer shadow-[0_0_15px_rgba(239,68,68,0.4)]"
+                    title="Cliquer pour clore l'incident"
                   >
-                    <AlertTriangle size={14} /> {truck.incident.toUpperCase()}
+                    <AlertTriangle size={14} className="animate-bounce" /> {truck.incident.toUpperCase()}
                   </div>
                 )}
                 
                 <Link href={`/admin/fleet/${truck.id}`} className="flex items-center gap-3">
                    <span className={`hidden md:block text-[10px] font-black px-4 py-2 rounded-full border ${
-                      truck.statut === 'EN ROUTE' ? 'border-green-500/30 text-green-500 bg-green-500/5' : 'border-zinc-800 text-zinc-600'
+                      truck.incident ? 'border-red-500/30 text-red-500 bg-red-500/5' :
+                      truck.statut === 'EN ROUTE' || truck.statut === 'DISPONIBLE' ? 'border-green-500/30 text-green-500 bg-green-500/5' : 'border-zinc-800 text-zinc-600'
                    }`}>
-                     {truck.statut}
+                     {truck.incident ? "ALERTE ACTION" : truck.statut}
                    </span>
                    <div className="p-3 bg-zinc-800 rounded-xl text-zinc-400 group-hover:text-black group-hover:bg-green-500 transition-all">
                       <ChevronRight size={20} />
@@ -269,7 +316,7 @@ export default function AdminFleetPage() {
         </div>
       )}
 
-      {/* FOOTER : MAINTENANCE */}
+      {/* FOOTER : MAINTENANCE / ALERTE GLOBALE */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-10">
         <div className="bg-zinc-950 border border-zinc-900 p-8 rounded-[40px] hover:border-orange-500/20 transition-all">
           <div className="flex items-center gap-3 mb-6">
@@ -287,7 +334,9 @@ export default function AdminFleetPage() {
             <ShieldCheck className="text-green-500" size={20} />
             <h3 className="text-white font-black uppercase italic">Alertes Critiques</h3>
           </div>
-          <p className="text-zinc-600 text-xs italic">Aucune alerte majeure. Flux de données stable.</p>
+          <p className="text-zinc-600 text-xs italic">
+            {fleet.some(t => t.incident) ? "Attention : Unités en détresse détectées sur le terrain. Interventions requises." : "Aucune alerte majeure. Flux de données stable."}
+          </p>
         </div>
       </div>
     </div>

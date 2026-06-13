@@ -9,7 +9,7 @@ const UserSchema = new mongoose.Schema(
     nom: {
       type: String,
       required: [true, "Le nom est obligatoire"],
-      trim: true, // supprime les espaces inutiles avant/après
+      trim: true,
     },
     prenom: {
       type: String,
@@ -19,8 +19,8 @@ const UserSchema = new mongoose.Schema(
     email: {
       type: String,
       required: [true, "L'email est obligatoire"],
-      unique: true, // pas deux comptes avec le même email
-      lowercase: true, // stocke toujours en minuscule
+      unique: true,
+      lowercase: true,
       trim: true,
     },
     telephone: {
@@ -29,15 +29,12 @@ const UserSchema = new mongoose.Schema(
       trim: true,
     },
     quartier: {
-      // "Quartier de résidence" visible sur le formulaire
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Quartier",
       required: [true, "Le quartier est obligatoire"],
-      trim: true,
     },
     
-    // 📍 ==========================================
-    // AJOUT COMPATIBLE : GÉOLOCALISATION & ANCRAGE AUTOMATIQUE
-    // ==========================================
+    // 📍 GÉOLOCALISATION & ANCRAGE AUTOMATIQUE
     localisationCollecte: {
       type: {
         type: String,
@@ -51,14 +48,13 @@ const UserSchema = new mongoose.Schema(
       statutEmplacement: {
         type: String,
         enum: ["En attente", "Validé", "À modifier"],
-        default: "En attente" // Par défaut, nécessite le 1er scan du chauffeur
+        default: "En attente"
       },
       adresseTextuelle: {
         type: String,
         default: ""
       }
     },
-    // ============================================
 
     password: {
       type: String,
@@ -67,24 +63,33 @@ const UserSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      default: "user", // rôle fixe pour tous les utilisateurs
+      default: "user",
     },
-    // --- AJOUTS POUR LE SYSTÈME DE RÉCOMPENSES ---
+
+    // --- SYSTÈME DE RÉCOMPENSES & POINTS CORRIGÉ ---
     points: {
       type: Number,
-      default: 0, // Nouveau compte = 0 point
+      default: 0,
+    },
+    ecoPoints: { // Ajouté pour compatibilité ascendante complète avec l'API truck
+      type: Number,
+      default: 0,
+    },
+    poidsTotalNum: { // Requis pour le stockage numérique et les totaux de collectes
+      type: Number,
+      default: 0,
     },
     recompensesEchangees: [
       {
         recompenseId: {
           type: mongoose.Schema.Types.ObjectId,
-          ref: "Recompense", // Liaison directe avec ton nouveau modèle Recompense
+          ref: "Recompense",
           required: true
         },
         name: { 
           type: String, 
           required: true 
-        }, // Sauvegarde textuelle en cas de modif du catalogue par l'admin
+        },
         price: { 
           type: Number, 
           required: true 
@@ -101,7 +106,7 @@ const UserSchema = new mongoose.Schema(
       }
     ],
     
-    // --- SYSTÈME D'ABONNEMENT AVEC ENUM SÉCURISÉ ---
+    // --- SYSTÈME D'ABONNEMENT ---
     abonnement: {
       statut: {
         type: String,
@@ -110,15 +115,22 @@ const UserSchema = new mongoose.Schema(
       },
       type: {
         type: String,
-        enum: ["Aucun", "Standard", "Immeuble", "Premium", "standard", "immeuble", "premium"], // 🔥 "Standard" ajouté ici pour stopper l'erreur de validation
+        enum: [
+          "Aucun", "aucun",
+          "FOYER ÉCO", "Foyer Éco", "Foyer Eco", "foyer éco", "foyer eco",
+          "FOYER PREMIUM", "Foyer Premium", "foyer premium",
+          "IMMEUBLE", "Immeuble", "immeuble",
+          "PRO STANDARD", "Pro Standard", "pro standard",
+          "PRO BUSINESS", "Pro Business", "pro business"
+        ],
         default: "Aucun"
       },
       dateDebut: { type: Date },
       dateFin: { type: Date },
-      derniereTransactionRef: { type: String } // Lien direct vers la référence immuable de la table Transaction
+      derniereTransactionRef: { type: String }
     },
 
-    // --- AJOUTS POUR LE SYSTÈME DE QUIZ & IMPACT ÉCO ---
+    // --- SYSTÈME DE QUIZ & IMPACT ÉCO DÉTAILLÉ ---
     quizCompletes: [
       {
         quizId: {
@@ -126,23 +138,37 @@ const UserSchema = new mongoose.Schema(
           ref: "Quiz",
           required: true
         },
-        scoreObtenu: { type: Number, required: true }, // Nombre de bonnes réponses (0 à 5)
-        pointsGagnes: { type: Number, required: true }, // Points attribués selon ton barème
+        scoreObtenu: { type: Number, required: true },
+        pointsGagnes: { type: Number, required: true },
         dateCompletion: { type: Date, default: Date.now }
       }
     ],
     impact: {
-      co2Evite: { type: Number, default: 0 },       // Stocké en kg (ex: 124)
-      eauEconomisee: { type: Number, default: 0 },  // Stocké en Litres (ex: 450)
-      arbresSauves: { type: Number, default: 0 }    // Stocké en nombre (ex: 2.4)
+      co2Evite: { type: Number, default: 0 },       // Stocké en kg
+      eauEconomisee: { type: Number, default: 0 },  // Stocké en Litres
+      arbresSauves: { type: Number, default: 0 },    // Stocké en nombre
+      poidsMensuel: { // Initialisé proprement pour éviter les erreurs de requêtes $inc
+        Jan: { type: Number, default: 0 },
+        Fev: { type: Number, default: 0 },
+        Mar: { type: Number, default: 0 },
+        Avr: { type: Number, default: 0 },
+        Mai: { type: Number, default: 0 },
+        Jui: { type: Number, default: 0 },
+        Jul: { type: Number, default: 0 },
+        Aou: { type: Number, default: 0 },
+        Sep: { type: Number, default: 0 },
+        Oct: { type: Number, default: 0 },
+        Nov: { type: Number, default: 0 },
+        Dec: { type: Number, default: 0 }
+      }
     }
   },
   {
-    timestamps: true, // crée automatiquement createdAt + updatedAt
+    timestamps: true,
   }
 );
 
-// Index 2dsphere pour permettre à MongoDB de faire des calculs géographiques avancés (Ex: l'admin cherche les camions à proximité)
+// Index 2dsphere pour permettre à MongoDB de faire des calculs géographiques avancés
 UserSchema.index({ "localisationCollecte.coordinates": "2dsphere" });
 
 // Évite de recréer le modèle à chaque hot-reload de Next.js
