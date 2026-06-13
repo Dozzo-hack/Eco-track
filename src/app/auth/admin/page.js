@@ -28,7 +28,7 @@ export default function AdminAuth() {
 
     // Connexion réussie → redirection directe sans vérifier la session
     // Le dashboard gère lui-même la protection
-    window.location.href = "http://localhost:3000/admin";
+    window.location.href = "/admin";
   }
 
   return (
