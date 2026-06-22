@@ -18,13 +18,11 @@ export default function UserLogin() {
     setErreur("");
     setChargement(true);
 
-    // signIn envoie les credentials à NextAuth
-    // type: "user" dit à NextAuth quel cas traiter dans authorize()
     const result = await signIn("credentials", {
       type: "user",
       email,
       password,
-      redirect: false, // on gère la redirection nous-mêmes
+      redirect: false,
     });
 
     setChargement(false);
@@ -34,7 +32,6 @@ export default function UserLogin() {
       return;
     }
 
-    // Connexion réussie → dashboard utilisateur
     router.push("/dashboard");
   }
 
@@ -76,7 +73,16 @@ export default function UserLogin() {
             />
           </div>
 
-          {/* Affiche l'erreur seulement si elle existe */}
+          {/* AJOUT : Lien mot de passe oublié */}
+          <div className="flex justify-end pr-2">
+            <Link 
+              href="/auth/forgot-password" 
+              className="text-xs font-semibold text-[#6200ee] hover:underline"
+            >
+              Mot de passe oublié ?
+            </Link>
+          </div>
+
           {erreur && (
             <p className="text-center text-sm font-medium text-red-500">
               {erreur}
