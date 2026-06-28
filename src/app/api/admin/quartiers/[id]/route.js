@@ -15,12 +15,20 @@ export async function PUT(req, { params }) {
       return NextResponse.json({ success: false, message: "Interdit." }, { status: 403 });
     }
 
-    const { id } = params;
+    // FIX NEXT.JS 15 : params est une Promise, on ajoute "await"
+    const { id } = await params;
     const { estActif } = await req.json();
 
-    const quartierModifie = await Quartier.findByIdAndUpdate(id, { estActif }, { new: true });
+    // FIX MONGOOSE : remplacement de { new: true } par { returnDocument: 'after' }
+    const quartierModifie = await Quartier.findByIdAndUpdate(
+      id, 
+      { estActif }, 
+      { returnDocument: 'after' }
+    );
+    
     return NextResponse.json({ success: true, data: quartierModifie });
   } catch (error) {
+    console.error("Erreur PUT quartier :", error);
     return NextResponse.json({ success: false, message: "Erreur lors de la modification." }, { status: 500 });
   }
 }
@@ -34,7 +42,8 @@ export async function DELETE(req, { params }) {
       return NextResponse.json({ success: false, message: "Interdit." }, { status: 403 });
     }
 
-    const { id } = params;
+    // FIX NEXT.JS 15 : params est une Promise, on ajoute "await"
+    const { id } = await params;
 
     // Sécurité CRUCIALE : Vérifier si des utilisateurs sont déjà liés à ce quartier
     const userLie = await User.findOne({ quartier: id });
@@ -48,6 +57,7 @@ export async function DELETE(req, { params }) {
     await Quartier.findByIdAndDelete(id);
     return NextResponse.json({ success: true, message: "Quartier supprimé avec succès." });
   } catch (error) {
+    console.error("Erreur DELETE quartier :", error);
     return NextResponse.json({ success: false, message: "Erreur lors de la suppression." }, { status: 500 });
   }
 }

@@ -9,7 +9,7 @@ export default function Sidebar() {
   const [showAddMenu, setShowAddMenu] = useState(false);
 
   const menuItems = [
-    { name: "Dashboard", icon: "fa-grid-2", path: "/dashboard" },
+    { name: "Dashboard", icon: "fa-solid fa-table-cells-large", path: "/dashboard" },
     { name: "Nouvelle Vidange", icon: "fa-truck-moving", path: "/dashboard/vidange" },
     { name: "Mes Activités", icon: "fa-clock-rotate-left", path: "/dashboard/activites" },
     { name: "Abonnement", icon: "fa-credit-card", path: "/dashboard/abonnement" },

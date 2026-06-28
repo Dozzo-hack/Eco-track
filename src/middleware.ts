@@ -16,7 +16,7 @@ export default withAuth(
     }
     // Blocage USER (DASHBOARD)
     if (path.startsWith("/dashboard") && token?.role !== "user") {
-      return NextResponse.redirect(new URL("/auth/user", req.url));
+      return NextResponse.redirect(new URL("/auth/user/login", req.url));
     }
   },
   
