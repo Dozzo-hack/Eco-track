@@ -8,6 +8,15 @@ export default function UserCalendarPage() {
   const [loading, setLoading] = useState(true);
   const [activeReminders, setActiveReminders] = useState({});
 
+  // 🛠️ FONCTION UTILITAIRE : Extrait proprement le nom du quartier (String ou Objet MongoDB)
+  const getQuartierNom = (quartiersField) => {
+    if (!quartiersField) return "Quartier non spécifié";
+    if (typeof quartiersField === 'object') {
+      return quartiersField.nom || "Quartier inconnu";
+    }
+    return quartiersField;
+  };
+
   const loadCalendar = async () => {
     try {
       setLoading(true);
@@ -34,27 +43,47 @@ export default function UserCalendarPage() {
     }
   }, []);
 
+  // ⏱️ GESTION DES NOTIFICATIONS HORAIRES (JUSQU'À 18H)
   useEffect(() => {
     const checkRemindersInterval = setInterval(() => {
       if (!("Notification" in window) || Notification.permission !== "granted") return;
+      
       const maintenant = new Date();
+
+      // Condition de coupure stricte à 18h
+      if (maintenant.getHours() >= 18) return;
+
+      // Récupération de l'historique des envois pour calculer le délai d'une heure
+      const savedLastNotified = localStorage.getItem("eco_track_last_notified");
+      const lastNotified = savedLastNotified ? JSON.parse(savedLastNotified) : {};
+      let hasChanges = false;
 
       schedules.forEach((schedule) => {
         if (activeReminders[schedule._id]) {
-          const heureCollecte = new Date(schedule.datePrevue);
-          const differenceMs = heureCollecte.getTime() - maintenant.getTime();
-          const differenceMinutes = Math.ceil(differenceMs / (1000 * 60));
-
-          if (differenceMinutes >= 10 && differenceMinutes <= 15) {
-            new Notification("🚚 Passage EcoTrack imminent !", {
-              body: `Le camion passera à ${schedule.quartiers} pour la collecte [${schedule.typeDechet}] d'ici 10 à 15 min.`,
+          const lastSentTime = lastNotified[schedule._id];
+          const uneHeureEnMs = 60 * 60 * 1000;
+          
+          // Déclenchement si premier envoi OU si 1 heure s'est écoulée
+          if (!lastSentTime || (maintenant.getTime() - new Date(lastSentTime).getTime() >= uneHeureEnMs)) {
+            const nomQuartier = getQuartierNom(schedule.quartiers);
+            
+            new Notification("🚚 Passage EcoTrack planifié", {
+              body: `Rappel horaire : Le camion de collecte [${schedule.typeDechet}] circule aujourd'hui à ${nomQuartier}.`,
               icon: "/favicon.ico"
             });
-            toggleReminder(schedule._id, schedule.quartiers, true);
+
+            // Enregistrement du timestamp actuel
+            lastNotified[schedule._id] = maintenant.toISOString();
+            hasChanges = true;
           }
         }
       });
-    }, 60000);
+
+      if (hasChanges) {
+        localStorage.setItem("eco_track_last_notified", JSON.stringify(lastNotified));
+      }
+    }, 60000); // Vérification de l'horloge toutes les minutes
+
     return () => clearInterval(checkRemindersInterval);
   }, [schedules, activeReminders]);
 
@@ -66,32 +95,38 @@ export default function UserCalendarPage() {
     setActiveReminders(updatedReminders);
     localStorage.setItem("eco_track_reminders", JSON.stringify(updatedReminders));
 
+    const savedLastNotified = localStorage.getItem("eco_track_last_notified");
+    const lastNotified = savedLastNotified ? JSON.parse(savedLastNotified) : {};
+
     if (!autoDisable && updatedReminders[id]) {
+      // Initialisation immédiate au moment du clic pour démarrer le décompte de l'heure
+      lastNotified[id] = new Date().toISOString();
+      localStorage.setItem("eco_track_last_notified", JSON.stringify(lastNotified));
+
       Swal.fire({
         icon: 'success',
         title: 'Rappel programmé !',
-        text: `Alerte active 10 à 15 minutes avant le passage à ${quartier}.`,
+        text: `Vous recevrez une notification toutes les heures pour le quartier ${quartier} jusqu'à 18h.`,
         background: '#121212',
         color: '#fff',
         confirmButtonColor: '#a855f7'
       });
+    } else {
+      // Nettoyage si désactivation manuelle
+      delete lastNotified[id];
+      localStorage.setItem("eco_track_last_notified", JSON.stringify(lastNotified));
     }
   };
 
-  // 🔥 1. CORRECTION : AJOUT DU MOIS ET DU JOUR DE LA SEMAINE DÉTAILLÉ
   const getCardDateDetails = (dateStr) => {
     const dateObj = new Date(dateStr);
-    
-    // Obtenir le nom du mois en français (ex: "MAI", "JUIN")
     const nomMois = dateObj.toLocaleDateString("fr-FR", { month: "short" }).toUpperCase().replace('.', '');
-    
-    // Obtenir le jour de la semaine pour l'ajouter discrètement à côté de l'estimation de l'heure
     const jourSemaine = dateObj.toLocaleDateString("fr-FR", { weekday: "long" });
 
     return {
-      nomMois, // Remplacera l'ancien "MARC", "LUND" par "MAI", "JUIN"
+      nomMois,
       numJour: dateObj.getDate(),
-      jourSemaine: jourSemaine.charAt(0).toUpperCase() + jourSemaine.slice(1) // "Mardi", "Vendredi"...
+      jourSemaine: jourSemaine.charAt(0).toUpperCase() + jourSemaine.slice(1)
     };
   };
 
@@ -123,6 +158,7 @@ export default function UserCalendarPage() {
           {schedules.map((schedule, index) => {
             const dateDetails = getCardDateDetails(schedule.datePrevue);
             const isReminderOn = !!activeReminders[schedule._id];
+            const nomDuQuartierAffiche = getQuartierNom(schedule.quartiers);
 
             return (
               <div 
@@ -138,22 +174,20 @@ export default function UserCalendarPage() {
                 )}
 
                 <div className="flex items-center gap-5 w-full sm:w-auto">
-                  
-                  {/* 🔥 2. CORRECTION DU BADGE : Affiche désormais le MOIS en haut */}
                   <div className="bg-purple-600 text-white w-20 h-20 rounded-3xl flex flex-col items-center justify-center font-black select-none shrink-0 shadow-sm">
                     <span className="text-[10px] tracking-widest opacity-90">{dateDetails.nomMois}</span>
                     <span className="text-2xl mt-0.5">{dateDetails.numJour}</span>
                   </div>
 
                   <div className="flex flex-col gap-1.5">
-                    <h3 className="text-xl font-black text-zinc-900 tracking-tight uppercase">{schedule.quartiers}</h3>
+                    {/* SÉCURISÉ : Affiche correctement le nom du quartier extrait de l'objet ou du texte */}
+                    <h3 className="text-xl font-black text-zinc-900 tracking-tight uppercase">
+                      {nomDuQuartierAffiche}
+                    </h3>
                     <div className="flex flex-wrap items-center gap-2">
-                      
-                      {/* 🔥 3. RAJOUT DU JOUR DE LA SEMAINE EN CLAIR (ex: "Jeudi • Est. Matinée") */}
                       <div className="bg-zinc-100 text-zinc-600 text-[10px] font-bold px-2.5 py-1 rounded-md flex items-center gap-1">
-                        📅 {dateDetails.jourSemaine} • ⏱️ Est. Matinée
+                        📅 {dateDetails.jourSemaine} • ⏱️ Estimé Journée
                       </div>
-                      
                       <span className="bg-purple-100 text-purple-700 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
                         ♻️ {schedule.typeDechet}
                       </span>
@@ -162,18 +196,14 @@ export default function UserCalendarPage() {
                 </div>
 
                 <button
-                  onClick={() => toggleReminder(schedule._id, schedule.quartiers)}
+                  onClick={() => toggleReminder(schedule._id, nomDuQuartierAffiche)}
                   className={`w-full sm:w-auto px-6 py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
                     isReminderOn 
                       ? 'bg-black text-white hover:bg-zinc-900' 
                       : 'bg-zinc-100 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700'
                   }`}
                 >
-                  {isReminderOn ? (
-                    <>Rappel Activé</>
-                  ) : (
-                    <>Activer le Rappel</>
-                  )}
+                  {isReminderOn ? <>Rappel Activé</> : <>Activer le Rappel</>}
                 </button>
               </div>
             );
